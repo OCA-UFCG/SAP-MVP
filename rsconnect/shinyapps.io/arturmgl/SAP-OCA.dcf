@@ -1,0 +1,12 @@
+name: SAP-OCA
+title: SAP-OCA
+username: arturmgl
+account: arturmgl
+server: shinyapps.io
+hostUrl: https://api.shinyapps.io/v1
+appId: 15880121
+bundleId: 11123861
+url: https://oca-labs.shinyapps.io/SAP-OCA/
+version: 1
+asMultiple: FALSE
+asStatic: FALSE
