@@ -17,6 +17,10 @@ library(promises)
 library(future)
 library(qs)
 library(writexl)
+library(htmltools)
+library(colourpicker)
+library(base64enc)
+library(shinyjs)
 
 # Configurar future para processamento assíncrono
 if (inherits(future::plan(), "sequential")) future::plan(multisession)
