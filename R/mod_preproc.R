@@ -1,6 +1,9 @@
 # =====================================================================
-# MÓDULO PRINCIPAL: PRÉ-PROCESSAMENTO (VERSÃO COMPLETA ATUALIZADA)
+# MÓDULO PRINCIPAL: PRÉ-PROCESSAMENTO (VERSÃO OTIMIZADA COM ASYNC)
 # =====================================================================
+
+library(promises)
+library(future)
 
 # Carregar submódulos e utilitários
 source("R/preproc/helpers.R")
@@ -210,7 +213,6 @@ mod_preproc_ui <- function(id) {
             card(
               card_header(icon("sliders-h"), " Configurações", class = "bg-info"),
               
-              # Variável - MUDADO PARA selectizeInput
               selectizeInput(
                 ns("var_map"), 
                 "Variável:", 
@@ -221,14 +223,12 @@ mod_preproc_ui <- function(id) {
                 )
               ),
               
-              # Nome customizado para legenda - NOVO
               textInput(
                 ns("nome_var_customizado"),
                 "Nome na legenda (opcional):",
-                placeholder = "Deixe vazio para usar o nome da variável"
-              ),
+                placeholder = "Deixe vazio para usar o nome da variável",
+                updateOn = "blur"),
               
-              # Paleta
               selectInput(
                 ns("pal"), 
                 "Paleta:", 
@@ -236,37 +236,33 @@ mod_preproc_ui <- function(id) {
                 selected = "viridis"
               ),
               
-              # Inverter paleta
               checkboxInput(ns("reverse_pal"), "Inverter cores", FALSE),
-              
-              # Escala log
               checkboxInput(ns("log_scale"), "Escala log₁₀", FALSE),
               
               hr(),
               
-              # Classes
-              checkboxInput(ns("usar_classes"), "Usar quebras de classe", FALSE),
+              checkboxInput(ns("usar_classes"), "Usar classificação em classes", FALSE),
               
               conditionalPanel(
                 condition = "input.usar_classes",
                 ns = ns,
-                numericInput(
+                sliderInput(
                   ns("n_classes"),
                   "Número de classes:",
+                  min = 3,
+                  max = 9,
                   value = 5,
-                  min = 2,
-                  max = 10,
                   step = 1
                 ),
                 selectInput(
                   ns("metodo_quebra"),
-                  "Método de quebra:",
+                  "Método de quebras:",
                   choices = c(
-                    "Natural Breaks (Jenks)" = "jenks",
-                    "Quantile" = "quantile",
-                    "Igual Intervalo" = "equal",
-                    "Pretty" = "pretty",
-                    "Desvio Padrão" = "sd"
+                    "Jenks (natural breaks)" = "jenks",
+                    "Quantis" = "quantile",
+                    "Intervalos iguais" = "equal",
+                    "Desvio padrão" = "sd",
+                    "K-means" = "kmeans"
                   ),
                   selected = "jenks"
                 )
@@ -274,24 +270,16 @@ mod_preproc_ui <- function(id) {
               
               hr(),
               
-              # Limites estaduais
               checkboxInput(ns("mostrar_limites_ufs"), "Mostrar limites estaduais", FALSE),
               
               hr(),
               
-              # Downloads
-              downloadButton(ns("dl_gpkg"), "GeoPackage", 
-                             icon = icon("download"), class = "btn-success w-100 mb-2"),
-              downloadButton(ns("dl_mapa_png"), "Mapa PNG", 
-                             icon = icon("image"), class = "btn-info w-100")
+              downloadButton(ns("dl_gpkg"), "GeoPackage", class = "btn-sm w-100 mb-1"),
+              downloadButton(ns("dl_mapa_png"), "Mapa (PNG)", class = "btn-sm w-100")
             )
           ),
           
-          # Mapa
-          card(
-            card_header(icon("map-location-dot"), " Mapa Coroplético"),
-            leafletOutput(ns("map"), height = "calc(100vh - 200px)")
-          )
+          leafletOutput(ns("map"), height = "700px")
         )
       )
     )
@@ -299,31 +287,59 @@ mod_preproc_ui <- function(id) {
 }
 
 # =====================================================================
-# SERVIDOR (LÓGICA)
+# LÓGICA DO SERVIDOR (SERVER)
 # =====================================================================
 
-mod_preproc_server <- function(id, data_global = reactive(NULL)) {
+mod_preproc_server <- function(id, default_data_path = NULL) {
   moduleServer(id, function(input, output, session) {
     ns <- session$ns
     
     # ========================================
-    # GERENCIAMENTO DE FONTE DE DADOS
+    # REACTIVE VALUES
+    # ========================================
+    rv <- reactiveValues(
+      data_loaded = FALSE,
+      processing = FALSE
+    )
+    
+    # ========================================
+    # FONTE DE DADOS
     # ========================================
     data_source <- reactive({
       if (input$use_default) {
-        return(data_global())
+        # default_data_path pode ser:
+        # 1. Dados já carregados (sf object)
+        # 2. Função que retorna dados
+        # 3. String com caminho do arquivo
+        
+        if (is.function(default_data_path)) {
+          # É uma função - executar
+          default_data_path()
+        } else if (inherits(default_data_path, "sf")) {
+          # Já são dados SF - retornar diretamente
+          default_data_path
+        } else if (is.character(default_data_path) && length(default_data_path) == 1) {
+          # É caminho de arquivo - ler
+          req(file.exists(default_data_path))
+          qs::qread(default_data_path)
+        } else {
+          # Outro tipo - retornar diretamente
+          default_data_path
+        }
       } else {
         req(input$upload_geo)
-        file_ext <- tools::file_ext(input$upload_geo$name)
+        
+        file_path <- input$upload_geo$datapath
+        file_ext <- tolower(tools::file_ext(input$upload_geo$name))
         
         tryCatch({
           if (file_ext == "gpkg") {
-            sf::st_read(input$upload_geo$datapath, quiet = TRUE)
+            sf::st_read(file_path, quiet = TRUE)
           } else if (file_ext == "shp") {
-            sf::st_read(input$upload_geo$datapath, quiet = TRUE)
+            sf::st_read(file_path, quiet = TRUE)
           } else if (file_ext == "zip") {
             temp_dir <- tempdir()
-            unzip(input$upload_geo$datapath, exdir = temp_dir)
+            unzip(file_path, exdir = temp_dir)
             shp_file <- list.files(temp_dir, pattern = "\\.shp$", full.names = TRUE)[1]
             req(shp_file)
             sf::st_read(shp_file, quiet = TRUE)
@@ -337,7 +353,7 @@ mod_preproc_server <- function(id, data_global = reactive(NULL)) {
       }
     })
     
-    data_sf <- reactive({
+    data_sf_processed <- reactive({
       df <- data_source()
       req(inherits(df, "sf"))
       x <- sf::st_make_valid(df)
@@ -370,16 +386,13 @@ mod_preproc_server <- function(id, data_global = reactive(NULL)) {
     # ========================================
     nomes_editados_data <- reactiveVal(list())
     
-    # Dados com colunas (SEM renomear) - para uso interno
     data_com_colunas_original <- reactive({
-      df <- data_sf()
+      df <- data_sf_processed()
+      req(df)
       aplicar_colunas(df, colunas_criadas_data())
     })
     
-    # Sistema de colunas com modal
     criar_sistema_colunas_modal(session, ns, "data", data_com_colunas_original, colunas_criadas_data)
-    
-    # Sistema de renomear com modal (passa data SEM renomear)
     criar_sistema_renomear_modal(session, ns, "data", data_com_colunas_original, nomes_editados_data)
     
     # ========================================
@@ -395,7 +408,7 @@ mod_preproc_server <- function(id, data_global = reactive(NULL)) {
     criar_sistema_filtros_modal(session, ns, "data", data_com_colunas_original, filtros_aplicados_data)
     
     # ========================================
-    # ATUALIZAR CHOICES (usar nomes originais)
+    # ATUALIZAR CHOICES
     # ========================================
     observe({
       df <- data_com_colunas_original()
@@ -404,19 +417,17 @@ mod_preproc_server <- function(id, data_global = reactive(NULL)) {
       vnum <- setdiff(num_cols(df), attr(df, "sf_column"))
       nomes_map <- nomes_editados_data()
       
-      # Criar choices: value = nome original, label = nome renomeado
       choices_mapa <- vnum
       names(choices_mapa) <- sapply(vnum, function(nome) {
         if (!is.null(nomes_map[[nome]])) nomes_map[[nome]] else nome
       })
       
-      # updateSelectizeInput em vez de updateSelectInput
       updateSelectizeInput(
         session, 
         "var_map", 
         choices = choices_mapa, 
         selected = vnum[[1]] %||% character(0),
-        server = TRUE  # Habilita busca server-side para muitas opções
+        server = TRUE
       )
       
       vars_padrao <- c("spe_mean", "ia_mean", "rural_poverty")
@@ -429,21 +440,19 @@ mod_preproc_server <- function(id, data_global = reactive(NULL)) {
     })
     
     # ========================================
-    # PROCESSAMENTO DE DADOS
+    # PROCESSAMENTO DE DADOS (ASSÍNCRONO)
     # ========================================
     
-    # Filtrar dados (COM NOMES ORIGINAIS)
     filtered_com_colunas_original <- reactive({
       df <- data_com_colunas_original()
+      req(df)
       aplicar_filtros(df, filtros_aplicados_data())
     })
     
-    # Aplicar renomeação para leaflet (usa nomes originais internamente)
     filtered_com_colunas <- reactive({
       filtered_com_colunas_original()
     })
     
-    # Variáveis selecionadas (NOMES ORIGINAIS)
     vars_sel_originais <- reactive({
       v <- input$vars_keep
       if (is.null(v) || length(v) == 0) {
@@ -459,7 +468,6 @@ mod_preproc_server <- function(id, data_global = reactive(NULL)) {
       v
     })
     
-    # Variáveis com nomes renomeados (para exibição)
     vars_sel <- reactive({
       v_orig <- vars_sel_originais()
       nomes_map <- nomes_editados_data()
@@ -469,7 +477,6 @@ mod_preproc_server <- function(id, data_global = reactive(NULL)) {
       }, USE.NAMES = FALSE)
     })
     
-    # Dados filtrados com seleção (APLICAR RENOMEAÇÃO AQUI)
     filtered <- reactive({
       df <- filtered_com_colunas_original()
       

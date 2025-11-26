@@ -55,7 +55,9 @@ criar_outputs_mapa <- function(output, session, ns, input, resultados_electre,
         inner_join(results |> select(CD_MUN, class_electre, class_label), by = "CD_MUN")
     } else {
       sf_results <- sf_data
-      if (nrow(results) == nrow(sf_data)) {
+      if (!is.null(results) && !is.null(sf_data) && 
+          nrow(results) > 0 && nrow(sf_data) > 0 &&
+          nrow(results) == nrow(sf_data)) {
         sf_results$class_electre <- results$class_electre
         sf_results$class_label <- results$class_label
       }
@@ -68,8 +70,8 @@ criar_outputs_mapa <- function(output, session, ns, input, resultados_electre,
     req(mapa_filtrado())
     sf_results <- mapa_filtrado()
     n_classes <- resultados_electre()$params$n_classes %||% 5
-    labels_atuais <- label_map()
-    cores_atuais <- paleta_cores()
+    labels_atuais <- resultados_electre()$label_map
+    cores_atuais <- resultados_electre()$paleta_cores
     cores_hex <- unname(cores_atuais[as.character(1:n_classes)])
     
     pal <- colorFactor(palette = cores_hex, domain = 1:n_classes, na.color = "#cccccc")
@@ -134,8 +136,8 @@ criar_outputs_mapa <- function(output, session, ns, input, resultados_electre,
       req(mapa_filtrado())
       sf_results <- mapa_filtrado()
       n_classes <- resultados_electre()$params$n_classes %||% 5
-      labels_atuais <- label_map()
-      cores_atuais <- paleta_cores()
+      labels_atuais <- resultados_electre()$label_map
+      cores_atuais <- resultados_electre()$paleta_cores
       cores_hex <- unname(cores_atuais[as.character(1:n_classes)])
       
       pal <- colorFactor(palette = cores_hex, domain = 1:n_classes, na.color = "#cccccc")

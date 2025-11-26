@@ -32,7 +32,7 @@ ui <- tagList(
   page_navbar(
     title = tags$div(
       class = "d-flex align-items-center",
-      tags$img(src = "oca_logo.png", height = "50", class = "me-3"),
+      tags$img(src = "sap_logo.png", height = "50", class = "me-3"),
       tags$div(
         tags$div("Sistema de Alerta Precoce | Secas e Desertificação", 
                  style = "font-size: 0.95rem; font-weight: 600; line-height: 1.2;"),

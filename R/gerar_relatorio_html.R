@@ -4,6 +4,7 @@
 
 gerar_relatorio_html <- function(dados, 
                                  qualificacao = NULL,
+                                 dados_espaciais = NULL,  
                                  params = NULL,
                                  config = list(),
                                  output_file) {
@@ -283,7 +284,7 @@ gerar_relatorio_html <- function(dados,
   if ("mapa_qualificacao" %in% cfg$elementos_visuais && !is.null(dados_sf) && !is.null(qualificacao)) {
     tryCatch({
       cat("Gerando mapa de qualificação completo...\n")
-      widget <- gerar_mapa_qualificacao_completo(dados_sf, qualificacao, cfg)
+      widget <- gerar_mapa_qualificacao_completo(dados_sf, qualificacao, cfg, dados_espaciais = dados_espaciais)
       widget_file <- file.path(widgets_dir, "mapa_qualificacao.html")
       htmlwidgets::saveWidget(widget, widget_file, selfcontained = TRUE)
       widgets_list$mapa_qualificacao <- widget_file

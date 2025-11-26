@@ -1,0 +1,12 @@
+name: sap-oca
+title: sap-oca
+username: sap-oca
+account: sap-oca
+server: shinyapps.io
+hostUrl: https://api.shinyapps.io/v1
+appId: 16032975
+bundleId: 11222314
+url: https://sap-oca.shinyapps.io/sap-oca/
+version: 1
+asMultiple: FALSE
+asStatic: FALSE

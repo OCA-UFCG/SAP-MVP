@@ -295,7 +295,7 @@ gerar_grafico_qualif_total <- function(qualificacao, config) {
 # MAPA: QUALIFICAÇÃO COMPLETO (CÓPIA EXATA DO MÓDULO ANÁLISE)
 # =====================================================================
 
-gerar_mapa_qualificacao_completo <- function(dados_sf, qualificacao, config) {
+gerar_mapa_qualificacao_completo <- function(dados_sf, qualificacao, config, dados_espaciais = NULL) {
   
   require(leaflet)
   require(sf)
@@ -308,140 +308,250 @@ gerar_mapa_qualificacao_completo <- function(dados_sf, qualificacao, config) {
     stop("Dados de qualificação não disponíveis")
   }
   
-  # LÓGICA EXATA DO MÓDULO ANÁLISE (linhas 2575-2674)
+  if (is.null(dados_espaciais)) {
+    stop("dados_espaciais é obrigatório para gerar o mapa de qualificação")
+  }
+  
+  # === CÓDIGO ADAPTADO DA ABA ANÁLISE ===
+  
+  resultado_sf <- dados_sf
+  espaciais <- dados_espaciais
+  qual <- qualificacao
+  camadas_processadas <- names(qual)
+  
   n_classes <- config$n_classes %||% 5
   cores_hex <- unname(config$paleta_cores[as.character(1:n_classes)])
   
-  pal_mun <- colorFactor(
-    palette = cores_hex,
-    domain = 1:n_classes,
-    na.color = "transparent"
-  )
+  pal_mun <- colorFactor(palette = cores_hex, domain = 1:n_classes, na.color = "transparent")
+  opacidade <- 0.7
   
-  # Criar mapa base
-  m <- leaflet() %>%
-    addProviderTiles(providers$CartoDB.Positron) %>%
+  # Inicializar mapa
+  m <- leaflet() %>% addProviderTiles(providers$CartoDB.Positron)
+  
+  # Adicionar municípios de fundo
+  m <- m %>%
     addPolygons(
-      data = dados_sf,
+      data = resultado_sf, 
       fillColor = ~pal_mun(class_electre),
-      fillOpacity = 0.3,
-      color = "#999999",
-      weight = 0.5,
+      fillOpacity = 0.3, 
+      color = "#999999", 
+      weight = 0.5, 
       group = "Municípios",
       label = ~paste0(NM_MUN, " - ", class_label)
     )
   
-  opacidade <- 0.7
+  grupos_visiveis <- c("Municípios")
   
-  # Adicionar camadas
-  if (!is.null(qualificacao$quilombolas) && nrow(qualificacao$quilombolas) > 0) {
-    m <- m %>%
-      addPolygons(
-        data = qualificacao$quilombolas,
-        fillColor = "#f39c12",
-        fillOpacity = opacidade,
-        color = "#d68910",
-        weight = 1,
-        group = "Quilombolas",
-        popup = ~paste0("<strong>Quilombola</strong><br/>Classe: ", class_label)
-      )
+  # Quilombolas
+  if ("quilombolas" %in% camadas_processadas && !is.null(espaciais$quilombolas)) {
+    quilombolas_filtrados <- tryCatch({
+      st_filter(espaciais$quilombolas, qual$quilombolas)
+    }, error = function(e) NULL)
+    
+    if (!is.null(quilombolas_filtrados) && nrow(quilombolas_filtrados) > 0) {
+      m <- m %>%
+        addPolygons(
+          data = quilombolas_filtrados, 
+          fillColor = "#f39c12", 
+          fillOpacity = opacidade,
+          color = "#d68910", 
+          weight = 1, 
+          group = "Quilombolas",
+          popup = ~paste0("<strong>Quilombola</strong>")
+        )
+      grupos_visiveis <- c(grupos_visiveis, "Quilombolas")
+    }
   }
   
-  if (!is.null(qualificacao$assentamentos) && nrow(qualificacao$assentamentos) > 0) {
-    m <- m %>%
-      addPolygons(
-        data = qualificacao$assentamentos,
-        fillColor = "#27ae60",
-        fillOpacity = opacidade,
-        color = "#1e8449",
-        weight = 1,
-        group = "Assentamentos",
-        popup = ~paste0("<strong>Assentamento</strong><br/>Classe: ", class_label)
-      )
+  # Assentamentos
+  if ("assentamentos" %in% camadas_processadas && !is.null(espaciais$assentamentos)) {
+    assentamentos_filtrados <- tryCatch({
+      st_filter(espaciais$assentamentos, qual$assentamentos)
+    }, error = function(e) NULL)
+    
+    if (!is.null(assentamentos_filtrados) && nrow(assentamentos_filtrados) > 0) {
+      m <- m %>%
+        addPolygons(
+          data = assentamentos_filtrados, 
+          fillColor = "#27ae60", 
+          fillOpacity = opacidade,
+          color = "#1e8449", 
+          weight = 1, 
+          group = "Assentamentos",
+          popup = ~paste0("<strong>Assentamento</strong>")
+        )
+      grupos_visiveis <- c(grupos_visiveis, "Assentamentos")
+    }
   }
   
-  if (!is.null(qualificacao$indigenas) && nrow(qualificacao$indigenas) > 0) {
-    m <- m %>%
-      addPolygons(
-        data = qualificacao$indigenas,
-        fillColor = "#3498db",
-        fillOpacity = opacidade,
-        color = "#2874a6",
-        weight = 1,
-        group = "Territórios Indígenas",
-        popup = ~paste0("<strong>Território Indígena</strong><br/>Classe: ", class_label)
-      )
+  # Terras Indígenas
+  if ("indigenas" %in% camadas_processadas && !is.null(espaciais$indigenas)) {
+    indigenas_filtrados <- tryCatch({
+      st_filter(espaciais$indigenas, qual$indigenas)
+    }, error = function(e) NULL)
+    
+    if (!is.null(indigenas_filtrados) && nrow(indigenas_filtrados) > 0) {
+      m <- m %>%
+        addPolygons(
+          data = indigenas_filtrados, 
+          fillColor = "#3498db", 
+          fillOpacity = opacidade,
+          color = "#2874a6", 
+          weight = 1, 
+          group = "T. Indígenas",
+          popup = ~paste0("<strong>Território Indígena</strong>")
+        )
+      grupos_visiveis <- c(grupos_visiveis, "T. Indígenas")
+    }
   }
   
-  if (!is.null(qualificacao$ensino) && nrow(qualificacao$ensino) > 0) {
-    m <- m %>%
-      addCircleMarkers(
-        data = qualificacao$ensino,
-        radius = 5,
-        fillColor = "#9b59b6",
-        fillOpacity = opacidade,
-        color = "#7d3c98",
-        weight = 1,
-        group = "Instituições de Ensino",
-        popup = ~paste0("<strong>Instituição de Ensino</strong><br/>Classe: ", class_label)
-      )
+  # Instituições de Ensino
+  if ("ensino" %in% camadas_processadas && !is.null(espaciais$ensino)) {
+    ensino_filtrados <- tryCatch({
+      ens <- st_filter(espaciais$ensino, qual$ensino)
+      geom_type <- unique(as.character(st_geometry_type(ens)))
+      if (any(grepl("POLYGON", geom_type))) {
+        ens <- st_centroid(ens)
+      }
+      ens
+    }, error = function(e) NULL)
+    
+    if (!is.null(ensino_filtrados) && nrow(ensino_filtrados) > 0) {
+      m <- m %>%
+        addCircleMarkers(
+          data = ensino_filtrados, 
+          radius = 5, 
+          fillColor = "#9b59b6",
+          fillOpacity = opacidade, 
+          color = "#7d3c98", 
+          weight = 1,
+          group = "Inst. Ensino",
+          popup = ~paste0("<strong>Instituição de Ensino</strong>")
+        )
+      grupos_visiveis <- c(grupos_visiveis, "Inst. Ensino")
+    }
   }
   
-  if (!is.null(qualificacao$prisoes) && nrow(qualificacao$prisoes) > 0) {
-    m <- m %>%
-      addCircleMarkers(
-        data = qualificacao$prisoes,
-        radius = 5,
-        fillColor = "#e74c3c",
-        fillOpacity = opacidade,
-        color = "#c0392b",
-        weight = 1,
-        group = "Unidades Prisionais",
-        popup = ~paste0("<strong>Unidade Prisional</strong><br/>Classe: ", class_label)
-      )
+  # Unidades Prisionais
+  if ("prisoes" %in% camadas_processadas && !is.null(espaciais$prisoes)) {
+    prisoes_filtrados <- tryCatch({
+      pris <- st_filter(espaciais$prisoes, qual$prisoes)
+      geom_type <- unique(as.character(st_geometry_type(pris)))
+      if (any(grepl("POLYGON", geom_type))) {
+        pris <- st_centroid(pris)
+      }
+      pris
+    }, error = function(e) NULL)
+    
+    if (!is.null(prisoes_filtrados) && nrow(prisoes_filtrados) > 0) {
+      m <- m %>%
+        addCircleMarkers(
+          data = prisoes_filtrados, 
+          radius = 5, 
+          fillColor = "#e74c3c",
+          fillOpacity = opacidade, 
+          color = "#c0392b", 
+          weight = 1,
+          group = "U. Prisionais",
+          popup = ~paste0("<strong>Unidade Prisional</strong>")
+        )
+      grupos_visiveis <- c(grupos_visiveis, "U. Prisionais")
+    }
   }
   
-  if (!is.null(qualificacao$sementes) && nrow(qualificacao$sementes) > 0) {
-    m <- m %>%
-      addCircleMarkers(
-        data = qualificacao$sementes,
-        radius = 5,
-        fillColor = "#16a085",
-        fillOpacity = opacidade,
-        color = "#117a65",
-        weight = 1,
-        group = "Bancos de Sementes",
-        popup = ~paste0("<strong>Banco de Sementes</strong><br/>Classe: ", class_label)
-      )
+  # Bancos de Sementes
+  if ("sementes" %in% camadas_processadas && !is.null(espaciais$sementes)) {
+    sementes_filtrados <- tryCatch({
+      sem <- st_filter(espaciais$sementes, qual$sementes)
+      geom_type <- unique(as.character(st_geometry_type(sem)))
+      if (any(grepl("POLYGON", geom_type))) {
+        sem <- st_centroid(sem)
+      }
+      sem
+    }, error = function(e) NULL)
+    
+    if (!is.null(sementes_filtrados) && nrow(sementes_filtrados) > 0) {
+      m <- m %>%
+        addCircleMarkers(
+          data = sementes_filtrados, 
+          radius = 5, 
+          fillColor = "#1abc9c",
+          fillOpacity = opacidade, 
+          color = "#117a65", 
+          weight = 1,
+          group = "B. Sementes",
+          popup = ~paste0("<strong>Banco de Sementes</strong>")
+        )
+      grupos_visiveis <- c(grupos_visiveis, "B. Sementes")
+    }
   }
   
-  # Adicionar controles
-  m %>%
+  # Propriedades Rurais
+  if ("prop_rurais" %in% camadas_processadas && !is.null(espaciais$prop_rurais)) {
+    prop_rurais_filtrados <- tryCatch({
+      prop_temp <- st_filter(espaciais$prop_rurais, qual$prop_rurais)
+      geom_types <- st_geometry_type(prop_temp)
+      
+      if (any(grepl("GEOMETRYCOLLECTION", as.character(geom_types)))) {
+        prop_temp <- st_collection_extract(prop_temp, "POLYGON")
+        prop_temp <- st_make_valid(prop_temp)
+        geom_types_final <- st_geometry_type(prop_temp)
+        valid_geoms <- grepl("POLYGON|MULTIPOLYGON", as.character(geom_types_final))
+        if (sum(valid_geoms) > 0) {
+          prop_temp[valid_geoms, ]
+        } else {
+          NULL
+        }
+      } else {
+        prop_temp
+      }
+    }, error = function(e) NULL)
+    
+    if (!is.null(prop_rurais_filtrados) && nrow(prop_rurais_filtrados) > 0) {
+      m <- m %>%
+        addPolygons(
+          data = prop_rurais_filtrados, 
+          fillColor = "#8e44ad", 
+          fillOpacity = opacidade,
+          color = "#6c3483", 
+          weight = 1, 
+          group = "Prop. Rurais",
+          popup = ~paste0("<strong>Propriedade Rural</strong>")
+        )
+      grupos_visiveis <- c(grupos_visiveis, "Prop. Rurais")
+    }
+  }
+  
+  # Adicionar controle de camadas
+  m <- m %>%
     addLayersControl(
-      overlayGroups = c(
-        "Municípios",
-        "Quilombolas",
-        "Assentamentos",
-        "Territórios Indígenas",
-        "Instituições de Ensino",
-        "Unidades Prisionais",
-        "Bancos de Sementes"
-      ),
+      overlayGroups = grupos_visiveis,
       options = layersControlOptions(collapsed = FALSE)
-    ) %>%
+    )
+  
+  # Adicionar legenda
+  cores_legenda <- c("#999999", "#f39c12", "#27ae60", "#3498db",
+                     "#9b59b6", "#e74c3c", "#1abc9c", "#8e44ad")
+  labels_legenda <- c("Municípios (fundo)", "Quilombolas", "Assentamentos",
+                      "T. Indígenas", "Inst. Ensino", "U. Prisionais", 
+                      "B. Sementes", "Prop. Rurais")
+  
+  # Filtrar apenas as camadas visíveis na legenda
+  indices_visiveis <- c(1)
+  if ("Quilombolas" %in% grupos_visiveis) indices_visiveis <- c(indices_visiveis, 2)
+  if ("Assentamentos" %in% grupos_visiveis) indices_visiveis <- c(indices_visiveis, 3)
+  if ("T. Indígenas" %in% grupos_visiveis) indices_visiveis <- c(indices_visiveis, 4)
+  if ("Inst. Ensino" %in% grupos_visiveis) indices_visiveis <- c(indices_visiveis, 5)
+  if ("U. Prisionais" %in% grupos_visiveis) indices_visiveis <- c(indices_visiveis, 6)
+  if ("B. Sementes" %in% grupos_visiveis) indices_visiveis <- c(indices_visiveis, 7)
+  if ("Prop. Rurais" %in% grupos_visiveis) indices_visiveis <- c(indices_visiveis, 8)
+  
+  m %>%
     addLegend(
       position = "bottomright",
-      colors = c("#999999", "#f39c12", "#27ae60", "#3498db", "#9b59b6", "#e74c3c", "#16a085"),
-      labels = c(
-        "Municípios (fundo)",
-        "Quilombolas",
-        "Assentamentos",
-        "Territórios Indígenas",
-        "Instituições de Ensino",
-        "Unidades Prisionais",
-        "Bancos de Sementes"
-      ),
-      title = "Camadas Territoriais",
+      colors = cores_legenda[indices_visiveis],
+      labels = labels_legenda[indices_visiveis],
+      title = "Camadas Territoriais", 
       opacity = 1
     )
 }

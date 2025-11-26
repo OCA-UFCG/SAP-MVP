@@ -545,6 +545,11 @@ mod_relatorios_server <- function(id, analise_data) {
     # DADOS NECESSÁRIOS DO MÓDULO DE ANÁLISE
     # ====================================================================
     
+    dados_espaciais <- reactive({
+      req(analise_data$dados_espaciais)
+      analise_data$dados_espaciais()
+    })
+    
     resultados_electre <- reactive({
       req(analise_data$resultados_electre)
       analise_data$resultados_electre()
@@ -967,6 +972,7 @@ mod_relatorios_server <- function(id, analise_data) {
       list(
         dados = dados_relatorio(),
         qualificacao = qualif_data,
+        dados_espaciais = dados_espaciais(),  
         params = resultados_electre()$params,
         config = config
       )
@@ -987,23 +993,60 @@ mod_relatorios_server <- function(id, analise_data) {
         
         tryCatch({
           
-          wrapper <- gerar_relatorio_wrapper("html")  # ← ADICIONAR "html"
+          cat("\n=== DEBUG 1: Iniciando ===\n")
           
+          # Testar cada reactive individualmente
+          cat("DEBUG 2: Testando resultados_electre...\n")
+          test_electre <- resultados_electre()
+          cat("DEBUG 2: OK - electre tem", nrow(test_electre$results), "linhas\n")
+          
+          cat("DEBUG 3: Testando dados_qualificacao...\n")
+          test_qualif <- dados_qualificacao()
+          cat("DEBUG 3: OK - qualificacao tem", length(test_qualif), "elementos\n")
+          
+          cat("DEBUG 4: Testando dados_espaciais...\n")
+          test_espaciais <- dados_espaciais()
+          cat("DEBUG 4: OK - espaciais tem", length(test_espaciais), "elementos\n")
+          
+          cat("DEBUG 5: Testando dados_relatorio...\n")
+          test_dados <- dados_relatorio()
+          cat("DEBUG 5: OK - dados tem", nrow(test_dados), "linhas\n")
+          
+          cat("DEBUG 6: Criando wrapper...\n")
+          wrapper <- gerar_relatorio_wrapper("html")
+          
+          cat("DEBUG 7: Wrapper criado\n")
+          cat("  - dados:", class(wrapper$dados)[1], "\n")
+          cat("  - qualificacao:", length(wrapper$qualificacao), "elementos\n")
+          cat("  - dados_espaciais:", length(wrapper$dados_espaciais), "elementos\n")
+          
+          cat("DEBUG 8: Chamando gerar_relatorio_html...\n")
           gerar_relatorio_html(
             dados = wrapper$dados,
             qualificacao = wrapper$qualificacao,
+            dados_espaciais = wrapper$dados_espaciais,
             params = wrapper$params,
             config = wrapper$config,
             output_file = file
           )
+          
+          cat("DEBUG 9: Relatório gerado!\n")
           
           removeNotification("html_gen")
           showNotification("Relatório HTML gerado com sucesso!", type = "message", duration = 3)
           
         }, error = function(e) {
           removeNotification("html_gen")
-          showNotification(paste("Erro ao gerar relatório:", e$message), 
-                           type = "error", duration = 10)
+          cat("\n=== ERRO ===\n")
+          cat("Classe:", class(e), "\n")
+          cat("Mensagem:", e$message, "\n")
+          cat("Call:", deparse(e$call), "\n")
+          print(str(e))
+          showNotification(
+            paste("Erro:", e$message), 
+            type = "error", 
+            duration = 10
+          )
         })
       }
     )
@@ -1024,6 +1067,7 @@ mod_relatorios_server <- function(id, analise_data) {
           gerar_relatorio_html(
             dados = wrapper$dados,
             qualificacao = wrapper$qualificacao,
+            dados_espaciais = wrapper$dados_espaciais,  # ← ADICIONAR
             params = wrapper$params,
             config = wrapper$config,
             output_file = file
@@ -1058,6 +1102,7 @@ mod_relatorios_server <- function(id, analise_data) {
           gerar_relatorio_html(
             dados = wrapper$dados,
             qualificacao = wrapper$qualificacao,
+            dados_espaciais = wrapper$dados_espaciais,  # ← ADICIONAR
             params = wrapper$params,
             config = wrapper$config,
             output_file = file

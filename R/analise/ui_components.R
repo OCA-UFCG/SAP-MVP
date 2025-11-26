@@ -456,6 +456,38 @@ criar_aba_qualificacao <- function(ns) {
         width = 250,
         position = "left",
         
+        
+        # BOTÃO EXECUTAR QUALIFICAÇÃO
+        actionButton(
+          ns("run_qualificacao"),
+          "Executar Qualificação",
+          icon = icon("map-location-dot"),
+          class = "btn-success w-100 mb-3"
+        ),
+        
+        # SELEÇÃO DE CAMADAS
+        card(
+          card_header(
+            icon("layer-group"), " Camadas Territoriais",
+            class = "bg-info"
+          ),
+          checkboxGroupInput(
+            ns("camadas_qualificacao"),
+            NULL,
+            choices = c(
+              "Quilombolas" = "quilombolas",
+              "Assentamentos" = "assentamentos",
+              "Terras Indígenas" = "indigenas",
+              "Instituições de Ensino" = "ensino",
+              "Unidades Prisionais" = "prisoes",
+              "Bancos de Sementes" = "sementes",
+              "Propriedades Rurais" = "prop_rurais"
+            ),
+            selected = c("quilombolas", "assentamentos", "indigenas", 
+                         "ensino", "prisoes", "sementes", "prop_rurais")
+          )
+        ),
+        
         card(
           card_header("Filtros", class = "bg-primary"),
           criar_botao_filtros_ui(ns, "qualificacao")
@@ -511,7 +543,19 @@ criar_aba_qualificacao <- function(ns) {
           value = textOutput(ns("vb_sementes")),
           showcase = icon("seedling"),
           theme = "success"
+        ),
+        value_box(
+          title = "Propriedades Rurais",
+          value = textOutput(ns("vb_prop_rurais")),
+          showcase = icon("house"),
+          theme = "purple"
         )
+      ),
+      
+      checkboxInput(
+        inputId = ns("gerar_mapa"),
+        label = strong("Gerar Mapa"),
+        value = FALSE
       ),
       
       # MAPA

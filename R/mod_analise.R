@@ -42,17 +42,6 @@ mod_analise_server <- function(id, preproc_data) {
       updateCheckboxInput(session, "limiares_avancado", value = FALSE)
     }) |> bindEvent(session$clientData, once = TRUE, ignoreNULL = FALSE)
     
-    # Cores e labels dinâmicos
-    label_map <- reactive({
-      n_classes <- input$n_classes %||% 5
-      gerar_labels_classes(n_classes)
-    })
-    
-    paleta_cores <- reactive({
-      n_classes <- input$n_classes %||% 5
-      gerar_paleta_cores(n_classes)
-    })
-    
     # Dados do pré-processamento
     data_sf <- reactive({
       req(preproc_data$data)
@@ -189,6 +178,7 @@ mod_analise_server <- function(id, preproc_data) {
     # ====================================================================
     
     perfis_manuais <- reactiveValues()
+    perfis_trigger <- reactiveVal(0)
     
     # Inicializar perfis
     inicializar_perfis(perfis_manuais, input, data_plain, ranges_real, criterios, to_unit, to_real)
@@ -197,8 +187,8 @@ mod_analise_server <- function(id, preproc_data) {
     observar_mudanca_classes(input, perfis_manuais, criterios, data_plain, ranges_real, to_unit, to_real)
     
     # Modal de perfis
-    criar_modal_perfis(session, ns, input, criterios, perfis_manuais)
-    
+    criar_modal_perfis(session, ns, input, criterios, perfis_manuais,
+                       data_plain, ranges_real, to_unit, to_real)    
     # Renderizar histogramas
     renderizar_histogramas_perfis(output, ns, input, criterios, data_plain, ranges_real, perfis_manuais)
     
@@ -208,15 +198,35 @@ mod_analise_server <- function(id, preproc_data) {
     # Resumo perfis
     resumo_perfis_definidos(output, ns, input, criterios, perfis_manuais)
     
+    # Salvar perfis do modal
+    salvar_perfis_modal(session, ns, input, criterios, perfis_manuais, perfis_trigger)
+    
+    # Resetar todos os perfis
+    resetar_perfis_modal(session, ns, input, criterios, perfis_manuais, 
+                         data_plain, ranges_real, to_unit, to_real, perfis_trigger)
+    
+    # Resetar perfil individual
+    resetar_perfil_individual(session, ns, input, criterios, perfis_manuais,
+                              data_plain, ranges_real, to_unit, to_real, perfis_trigger)
+    
     # Matriz B
     B_current <- reactive({
+      crits <- criterios()
+      b_mode <- input$b_mode
+      perfis_trigger()  # Dependência do trigger
+      
+      # Converter reactiveValues para lista comum
+      perfis_list <- lapply(setNames(crits, crits), function(cn) {
+        perfis_manuais[[cn]]
+      })
+      
       calcular_perfis_b(
-        criterios = criterios(),
+        criterios = crits,
         n_classes = input$n_classes %||% 5,
-        b_mode = input$b_mode,
+        b_mode = b_mode,
         data_plain = data_plain(),
         ranges_real = ranges_real(),
-        perfis_manuais = perfis_manuais,
+        perfis_manuais = perfis_list,
         input = input,
         to_unit = to_unit
       )
@@ -243,17 +253,36 @@ mod_analise_server <- function(id, preproc_data) {
     # ====================================================================
     
     resultados_electre <- eventReactive(input$run_electre, {
-      executar_electre(
+      n_classes <- input$n_classes %||% 5
+      
+      resultado <- executar_electre(
         data_plain = data_plain,
         criterios = criterios,
         W_norm = W_norm,
         ranges_real = ranges_real,
         B_current = B_current,
         input = input,
-        label_map = label_map,
+        label_map = gerar_labels_classes(n_classes),
         electre_tri_b_py = electre_tri_b_py,
         to_unit = to_unit
       )
+      
+      # Adicionar label_map e paleta_cores ao resultado
+      resultado$label_map <- gerar_labels_classes(n_classes)
+      resultado$paleta_cores <- gerar_paleta_cores(n_classes)
+      
+      resultado
+    })
+    
+    # Extrair label_map e paleta_cores dos resultados
+    label_map <- reactive({
+      req(resultados_electre())
+      resultados_electre()$label_map
+    })
+    
+    paleta_cores <- reactive({
+      req(resultados_electre())
+      resultados_electre()$paleta_cores
     })
     
     # ====================================================================
@@ -290,7 +319,7 @@ mod_analise_server <- function(id, preproc_data) {
       carregar_dados_espaciais()
     })
     
-    criar_outputs_qualificacao(
+    qualif_outputs <- criar_outputs_qualificacao(
       output, session, ns, input,
       resultados_electre, data_sf, dados_espaciais,
       label_map, paleta_cores
@@ -313,8 +342,11 @@ mod_analise_server <- function(id, preproc_data) {
           resultados_electre()
         }),
         intersecoes = reactive({
-          # Implementar se necessário
-          NULL
+          if (!is.null(qualif_outputs) && !is.null(qualif_outputs$intersecoes)) {
+            qualif_outputs$intersecoes()
+          } else {
+            NULL
+          }
         }),
         data_sf = reactive({
           req(data_sf())
@@ -325,7 +357,10 @@ mod_analise_server <- function(id, preproc_data) {
         }),
         paleta_cores = reactive({
           paleta_cores()
-        })
+        }),
+        dados_espaciais = reactive({  # ← ADICIONAR ESTA LINHA
+          dados_espaciais()            # ← E ESTA
+        })  
       )
     )
     

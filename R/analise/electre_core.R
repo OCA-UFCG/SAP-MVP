@@ -1,70 +1,71 @@
-# =====================================================================
+# ====================================================================
 # LÓGICA CORE - ELECTRE TRI-B
-# =====================================================================
+# ====================================================================
 
 #' Calcular matriz de perfis B
 #' 
 #' @param criterios Vetor com nomes dos critérios
 #' @param n_classes Número de classes
-#' @param b_mode "quantis" ou "manual"
-#' @param data_plain Data frame com dados
+#' @param b_mode Modo ("quantis" ou "manual")
+#' @param data_plain Dataframe com dados originais
 #' @param ranges_real Lista com ranges dos critérios
-#' @param perfis_manuais reactiveValues com perfis manuais
-#' @param input Shiny input para pegar sentidos
+#' @param perfis_manuais Ambiente com valores manuais
+#' @param input Shiny input
 #' @param to_unit Função de conversão para [0,1]
-#' @return Matriz de perfis (n_perfis x n_criterios)
+#' @return Matriz de perfis [n_perfis x n_criterios]
 #' @export
-calcular_perfis_b <- function(criterios, n_classes, b_mode, data_plain, ranges_real, 
-                               perfis_manuais, input, to_unit) {
+calcular_perfis_b <- function(criterios, n_classes, b_mode, data_plain, ranges_real,
+                              perfis_manuais, input, to_unit) {
   
   n_perfis <- n_classes - 1
+  if (n_perfis < 1) return(NULL)
   
-  Bm <- matrix(NA_real_, nrow = n_perfis, ncol = length(criterios), 
-               dimnames = list(paste0("b", 1:n_perfis), criterios))
+  Bm <- matrix(0, nrow = n_perfis, ncol = length(criterios))
+  rownames(Bm) <- paste0("b", 1:n_perfis)
+  colnames(Bm) <- criterios
   
-  if (b_mode == "quantis") {
-    # Quantis automáticos - calcula por critério
-    probs <- seq(0, 1, length.out = n_classes + 1)[2:n_classes]
-    
-    for (j in seq_along(criterios)) {
-      cn <- criterios[j]
-      sense <- input[[paste0("sense_", cn)]] %||% "benefit"
-      ucol <- to_unit(data_plain[[cn]], cn, sense, ranges_real)
-      Bm[, j] <- quantile(ucol, probs = probs, type = 7, na.rm = TRUE)
-    }
-  } else {
-    # Manual - usar perfis_manuais
-    for (j in seq_along(criterios)) {
-      cn <- criterios[j]
-      sense <- input[[paste0("sense_", cn)]] %||% "benefit"
-      
-      vals_real <- perfis_manuais[[cn]]
-      
-      if (is.null(vals_real) || length(vals_real) != n_perfis) {
-        r <- ranges_real[[cn]]
-        if (sense == "benefit") {
-          vals_real <- seq(r[1], r[2], length.out = n_perfis + 2)[2:(n_perfis + 1)]
-        } else {
-          vals_real <- seq(r[2], r[1], length.out = n_perfis + 2)[2:(n_perfis + 1)]
-        }
+  for (crit in criterios) {
+    if (b_mode == "quantis") {
+      # Quantis automáticos - calcula por critério
+      sense <- input[[paste0("sense_", crit)]] %||% "benefit"
+      vals <- na.omit(data_plain[[crit]])
+      if (length(vals) < (n_perfis + 1)) {
+        Bm[, crit] <- seq(0.2, 0.8, length.out = n_perfis)
+      } else {
+        probs <- seq(0, 1, length.out = n_perfis + 2)[2:(n_perfis + 1)]
+        q_real <- quantile(vals, probs = probs)
+        Bm[, crit] <- sapply(q_real, function(v) to_unit(v, crit, sense, ranges_real))
       }
-      
-      u <- to_unit(vals_real, cn, sense, ranges_real)
-      Bm[, j] <- sort(clamp01(u))
+    } else {
+      # Manual
+      vals_manuais <- perfis_manuais[[crit]]
+      if (!is.null(vals_manuais) && length(vals_manuais) == n_perfis) {
+        sense <- input[[paste0("sense_", crit)]] %||% "benefit"
+        Bm[, crit] <- sapply(vals_manuais, function(v) to_unit(v, crit, sense, ranges_real))
+      } else {
+        Bm[, crit] <- seq(0.2, 0.8, length.out = n_perfis)
+      }
     }
   }
   
-  Bm
+  # Garantir ordem crescente
+  for (j in seq_along(criterios)) {
+    if (is.unsorted(Bm[, j])) {
+      Bm[, j] <- sort(Bm[, j])
+    }
+  }
+  
+  return(Bm)
 }
 
 #' Preparar dados para execução do ELECTRE
 #' 
-#' @param data_plain Data frame com dados
+#' @param data_plain Dataframe com dados
 #' @param criterios Vetor com critérios
 #' @param ranges_real Lista com ranges
 #' @param input Shiny input
 #' @param to_unit Função de conversão
-#' @return Lista com dataset normalizado e df_cleaned
+#' @return Lista com dataset e df_cleaned
 #' @export
 preparar_dados_electre <- function(data_plain, criterios, ranges_real, input, to_unit) {
   
@@ -125,7 +126,7 @@ obter_limiares <- function(input, criterios, limiares_avancado = FALSE) {
 #' @return Lista com results e params
 #' @export
 executar_electre <- function(data_plain, criterios, W_norm, ranges_real, B_current, 
-                              input, label_map, electre_tri_b_py, to_unit) {
+                             input, label_map, electre_tri_b_py, to_unit) {
   
   crits <- criterios()
   req(length(crits) >= 2)
@@ -168,8 +169,21 @@ executar_electre <- function(data_plain, criterios, W_norm, ranges_real, B_curre
     
     classification <- as.integer(classification) + 1L
     
-    # Labels
-    labels_atuais <- label_map()
+    # Labels - verificar se label_map é reactive ou valor direto
+    labels_atuais <- tryCatch({
+      if (is.function(label_map)) {
+        label_map()
+      } else {
+        label_map
+      }
+    }, error = function(e) {
+      # Fallback: gerar labels padrão se houver erro
+      setNames(
+        paste0("Classe ", seq_len(n_classes)),
+        as.character(seq_len(n_classes))
+      )
+    })
+    
     results_df <- df_cleaned |>
       mutate(
         class_electre = as.integer(classification),

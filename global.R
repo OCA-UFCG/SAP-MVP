@@ -58,8 +58,7 @@ paletas <- c("viridis", "plasma", "magma", "inferno", "cividis", "Turbo")
 
 # Garantir CRS WGS84
 ensure_wgs84 <- function(x) {
-  if (is.na(sf::st_crs(x))) return(sf::st_set_crs(x, 4326))
-  if (sf::st_crs(x)$epsg != 4326) sf::st_transform(x, 4326) else x
+  if (is.na(sf::st_crs(x))) sf::st_set_crs(x, 4326) else x
 }
 
 # Identificar colunas numéricas
@@ -81,16 +80,6 @@ col_range <- function(df, col) {
   if (any(!is.finite(rng))) c(0, 1) else rng
 }
 
-# Cache para simplificação de geometrias
-.simplify_cache <- cache_mem(max_size = 128 * 1024^2)
-
-# Simplificar geometrias (memoizado)
-msimplify_memo <- memoise(function(sfobj, tol_m = 300) {
-  sfobj |>
-    sf::st_transform(3857) |>
-    sf::st_simplify(dTolerance = tol_m, preserveTopology = TRUE) |>
-    sf::st_transform(4326)
-}, cache = .simplify_cache)
 
 # ---- Carregar Dados ---------------------------------------------------
 if (!exists("mun_asd", inherits = TRUE)) {

@@ -72,53 +72,116 @@ criar_paleta_leaflet <- function(valores, palette_name = "viridis", reverse = FA
                                  metodo_quebra = "jenks") {
   vals_clean <- valores[is.finite(valores)]
   
+  # Sem dados válidos: devolve algo "dummy" para não quebrar
   if (length(vals_clean) == 0) {
-    return(colorNumeric(palette = palette_name, domain = c(0, 1), na.color = "#cccccc"))
+    return(colorNumeric(
+      palette = palette_name,
+      domain  = c(0, 1),
+      na.color = "#cccccc",
+      reverse  = reverse
+    ))
   }
   
   if (usar_classes) {
-    n_eff <- min(n_classes, length(unique(vals_clean)))
+    # --- CORREÇÃO: tratar casos com poucos valores distintos ---
+    uvals <- unique(vals_clean)
+    
+    # Se só tem um valor, não faz sentido classificar: volta para paleta contínua
+    if (length(uvals) < 2) {
+      return(colorNumeric(
+        palette = palette_name,
+        domain  = valores,
+        na.color = "#cccccc",
+        reverse  = reverse
+      ))
+    }
+    
+    n_eff <- min(n_classes, length(uvals))
     n_eff <- max(2, n_eff)
     
-    tryCatch({
+    brks <- tryCatch({
       brks <- classInt::classIntervals(vals_clean, n = n_eff, style = metodo_quebra)$brks
+      
+      # garantir que as quebras sejam estritamente crescentes
+      brks <- sort(unique(brks))
+      
+      # fallback: tenta quantile se ainda não tiver quebras suficientes
+      if (length(brks) < 2) {
+        brks <- classInt::classIntervals(vals_clean, n = n_eff, style = "quantile")$brks
+        brks <- sort(unique(brks))
+      }
+      
+      # fallback final: sequência simples min–max
+      if (length(brks) < 2) {
+        brks <- seq(
+          min(vals_clean, na.rm = TRUE),
+          max(vals_clean, na.rm = TRUE),
+          length.out = 2
+        )
+      }
+      
+      # Expandir levemente os extremos para garantir inclusão
       brks[1] <- min(vals_clean, na.rm = TRUE) - 1e-10
       brks[length(brks)] <- max(vals_clean, na.rm = TRUE) + 1e-10
       
-      pal <- colorBin(
-        palette = palette_name,
-        domain = valores,
-        bins = brks,
-        na.color = "#cccccc",
-        reverse = reverse
-      )
-      
-      return(pal)
+      brks
     }, error = function(e) {
-      warning("Erro ao criar quebras, usando paleta contínua: ", e$message)
+      warning("Erro ao criar quebras de classe (", metodo_quebra, "): ", e$message,
+              " — usando paleta contínua.")
+      NULL
+    })
+    
+    # Se ainda assim não for possível, cai para contínua
+    if (is.null(brks) || length(unique(brks)) < 2L) {
       return(colorNumeric(
         palette = palette_name,
-        domain = valores,
+        domain  = valores,
         na.color = "#cccccc",
-        reverse = reverse
+        reverse  = reverse
       ))
-    })
-  } else {
-    colorNumeric(
-      palette = palette_name,
-      domain = valores,
+    }
+    
+    # Aqui temos um vetor de breaks estritamente crescente
+    pal <- colorBin(
+      palette  = palette_name,
+      domain   = valores,
+      bins     = brks,
       na.color = "#cccccc",
-      reverse = reverse
+      reverse  = reverse
+    )
+    
+    return(pal)
+    
+  } else {
+    # Paleta contínua
+    colorNumeric(
+      palette  = palette_name,
+      domain   = valores,
+      na.color = "#cccccc",
+      reverse  = reverse
     )
   }
 }
+
 
 #' Criar quebras de classe para ggplot2
 criar_quebras_classe <- function(valores, n_classes, method = "jenks") {
   x_ok <- valores[is.finite(valores)]
   
+  # Sem dados válidos
+  if (length(x_ok) == 0) {
+    return(c(0, 1))
+  }
+  
+  # --- CORREÇÃO: evitar breaks não únicos quando todos os dados são iguais ---
   if (length(unique(x_ok)) < 2) {
-    return(range(x_ok, na.rm = TRUE))
+    v <- unique(x_ok)
+    v <- v[is.finite(v)]
+    if (length(v) == 0) v <- 0
+    
+    # pequeno epsilon em torno do valor único
+    eps <- if (v == 0) 1e-6 else abs(v) * 1e-6
+    return(c(v - eps, v + eps))
   }
   
   n_eff <- min(n_classes, length(unique(x_ok)) - 1)
@@ -127,23 +190,37 @@ criar_quebras_classe <- function(valores, n_classes, method = "jenks") {
   tryCatch({
     brks <- classInt::classIntervals(x_ok, n = n_eff, style = method)$brks
     
+    # se as quebras não forem todas distintas, tenta quantile
     if (length(unique(brks)) < (n_eff + 1)) {
       brks <- classInt::classIntervals(x_ok, n = n_eff, style = "quantile")$brks
     }
     
+    # garantir unicidade e ordenação das quebras
+    brks <- sort(unique(brks))
+    
+    # fallback final
+    if (length(brks) < 2) {
+      brks <- seq(
+        min(x_ok, na.rm = TRUE),
+        max(x_ok, na.rm = TRUE),
+        length.out = 2
+      )
+    }
+    
     brks
   }, error = function(e) {
-    seq(min(x_ok, na.rm = TRUE), max(x_ok, na.rm = TRUE), length.out = n_eff + 1)
+    seq(
+      min(x_ok, na.rm = TRUE),
+      max(x_ok, na.rm = TRUE),
+      length.out = n_eff + 1
+    )
   })
 }
+
 
 #' Criar mapa leaflet base
 criar_mapa_base <- function(df) {
   req(nrow(df) > 0)
-  
-  if (sf::st_crs(df) != sf::st_crs(4326)) {
-    df <- sf::st_transform(df, 4326)
-  }
   
   bb <- sf::st_bbox(df)
   
@@ -188,10 +265,6 @@ atualizar_camada_mapa <- function(proxy, df, var, vals, pal, ns,
                                   mostrar_ufs = FALSE, ufs_sf = NULL,
                                   nomes_map = NULL, nome_customizado = NULL) {
   
-  if (sf::st_crs(df) != sf::st_crs(4326)) {
-    df <- sf::st_transform(df, 4326)
-  }
-  
   # Determinar nome para exibição
   # Prioridade: 1) nome customizado, 2) nome renomeado, 3) nome original
   nome_exibicao <- if (!is.null(nome_customizado) && nchar(trimws(nome_customizado)) > 0) {
@@ -203,7 +276,6 @@ atualizar_camada_mapa <- function(proxy, df, var, vals, pal, ns,
   }
   
   lab <- criar_labels_mapa(df, var, nome_exibicao)
-  df_s <- tryCatch(msimplify_memo(df, tol_m = 500), error = function(e) df)
   
   proxy <- proxy |>
     clearShapes() |>
@@ -211,7 +283,7 @@ atualizar_camada_mapa <- function(proxy, df, var, vals, pal, ns,
   
   proxy <- proxy |>
     addPolygons(
-      data = df_s,
+      data = df,
       fillColor = ~pal(vals),
       fillOpacity = 0.8,
       color = "#555",
@@ -222,10 +294,6 @@ atualizar_camada_mapa <- function(proxy, df, var, vals, pal, ns,
     )
   
   if (mostrar_ufs && !is.null(ufs_sf)) {
-    if (sf::st_crs(ufs_sf) != sf::st_crs(4326)) {
-      ufs_sf <- sf::st_transform(ufs_sf, 4326)
-    }
-    
     proxy <- proxy |>
       addPolylines(
         data = ufs_sf,
@@ -250,8 +318,7 @@ atualizar_camada_mapa <- function(proxy, df, var, vals, pal, ns,
 setup_sistema_mapas <- function(output, session, input, filtered_data, ns, nomes_map_reactive) {
   
   output$map <- renderLeaflet({
-    df <- filtered_data()
-    criar_mapa_base(df)
+    criar_mapa_base(filtered_data())
   })
   
   observe({
@@ -302,10 +369,6 @@ gerar_mapa_png <- function(df, var, vals, pal_name = "viridis",
                            usar_basemap = TRUE,
                            nome_exibicao = NULL) {
   
-  if (sf::st_crs(df) != sf::st_crs(4326)) {
-    df <- sf::st_transform(df, 4326)
-  }
-  
   if (is.null(nome_exibicao)) nome_exibicao <- var
   
   library(ggplot2)
@@ -315,9 +378,6 @@ gerar_mapa_png <- function(df, var, vals, pal_name = "viridis",
   ufs_sf <- NULL
   if (mostrar_limites_ufs) {
     ufs_sf <- obter_limites_ufs()
-    if (!is.null(ufs_sf) && sf::st_crs(ufs_sf) != sf::st_crs(4326)) {
-      ufs_sf <- sf::st_transform(ufs_sf, 4326)
-    }
   }
   
   # Criar mapa base
