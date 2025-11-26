@@ -1,29 +1,41 @@
-# Base R Shiny image (includes Shiny Server)
 FROM rocker/shiny
 
-# Install system dependencies (for package compilation)
+# Instala TODAS as dependencias de sistema comuns para R Espacial e Grafico
+# Inclui suporte para: sf, terra, leaflet, kableExtra, systemfonts, textshaping, devtools
 RUN apt-get update && apt-get install -y \
+    cmake \
+    curl \
     libcurl4-openssl-dev \
     libssl-dev \
     libxml2-dev \
+    libudunits2-dev \
+    libgdal-dev \
+    libgeos-dev \
+    libproj-dev \
+    gdal-bin \
+    libharfbuzz-dev \
+    libfribidi-dev \
+    libfreetype6-dev \
+    libpng-dev \
+    libtiff5-dev \
+    libjpeg-dev \
+    libfontconfig1-dev \
+    libcairo2-dev \
+    libxt-dev \
+    pandoc \
     && rm -rf /var/lib/apt/lists/*
 
-# Copy your R package requirements
+# Instala pacotes R (Isso ja esta em cache, nao vai demorar)
 COPY requirements.R /tmp/requirements.R
-
-COPY . /tmp/.
-
-# Install R packages
 RUN Rscript /tmp/requirements.R
 
-# Copy your Shiny app to the default Shiny Server directory
-COPY app.R /srv/shiny-server/
+# --- ATUALIZE ESTA LINHA ---
+# Instala writexl, colourpicker e outros comuns que podem ter sido esquecidos
+RUN R -e "install.packages(c('writexl', 'colourpicker', 'shinyBS', 'shinycssloaders'), repos='https://cloud.r-project.org')"
+# ---------------------------
 
-# Expose the Shiny Server port
+COPY sap-app/ /srv/shiny-server/
+
 EXPOSE 3838
 
-# (Optional) You can change this if you want a custom port inside container
-# EXPOSE 8180
-
-# Use Shiny Server as the entrypoint (default in rocker/shiny)
 CMD ["/usr/bin/shiny-server"]
