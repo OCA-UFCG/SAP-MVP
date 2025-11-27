@@ -1,32 +1,70 @@
-# requirements.R
-# Automatically detect and install all packages used in your app
+# requirements.R - Lista Otimizada e Limpa
 
-# List of R files to scan (add others if needed)
-r_files <- c("app.R", "global.R", ".Rhistory", "./R/electre_tri_b_func.R", "./R/mod_analise.R", "./R/mod_preproc.R")
+# Definir repositorio de BINARIOS (Isso acelera o build em 10x)
+# Usando snapshot para Ubuntu 22.04 (Jammy) que é a base do rocker/shiny
+options(repos = c(CRAN = "https://packagemanager.posit.co/cran/__linux__/jammy/latest"))
 
+packages <- c(
+  # --- Core Shiny & UI ---
+  "shiny",
+  "bslib",
+  "shinyWidgets",
+  "shinyjs",
+  "waiter",       # Telas de carregamento
+  "htmltools",
+  "shinyBS",
+  "shinycssloaders",
+  "colourpicker",
+  
+  # --- Dados & Manipulacao ---
+  "dplyr",
+  "tidyr",
+  "stringr",
+  "purrr",
+  "readr",
+  "lubridate",
+  "qs",           # CRITICO: Para ler seus arquivos .qs
+  "openxlsx",     # Provavel uso em gerar_excel_completo.R
+  "writexl",
+  "readxl",
+  
+  # --- Espacial ---
+  "sf",           # O mais pesado de todos
+  "leaflet",
+  "leaflet.extras",
+  "geojsonsf",
+  "units",
+  
+  # --- Visualizacao ---
+  "plotly",
+  "ggplot2",
+  "DT",
+  "viridis",
+  "RColorBrewer",
+  
+  # --- Relatorios ---
+  "rmarkdown",
+  "knitr",
+  "kableExtra",
+  "systemfonts",
+  "textshaping",
+  
+  # --- Chatbot & API ---
+  "httr2",
+  "jsonlite",
+  
+  # --- Async ---
+  "future",
+  "promises"
+)
 
-
-# Extract all library() and require() calls
-packages <- unique(unlist(lapply(r_files, function(f) {
-  if (file.exists(f)) {
-    lines <- readLines(f, warn = FALSE)
-    libs <- gsub(".*(library|require)\\((['\"]?)([A-Za-z0-9\\.]+)\\2\\).*", "\\3", grep("(library|require)\\(", lines, value = TRUE))
-    libs[libs != lines]  # only return actual package names
-  } else {
-    character(0)
+# Funcao de instalacao simples e rapida
+install_if_missing <- function(p) {
+  if (!requireNamespace(p, quietly = TRUE)) {
+    message(paste("⬇ Instalando (Binario):", p))
+    install.packages(p)
   }
-})))
-
-# Remove any duplicates and base packages
-base_pkgs <- rownames(installed.packages(priority = "base"))
-packages <- setdiff(packages, base_pkgs)
-
-# Print packages to install
-cat("Installing packages:", paste(packages, collapse = ", "), "\n")
-
-# Install missing ones
-if (length(packages) > 0) {
-  install.packages(setdiff(packages, installed.packages()[, "Package"]))
-} else {
-  cat("No additional packages detected.\n")
 }
+
+invisible(lapply(packages, install_if_missing))
+cat("🚀 Todos os pacotes instalados via Binários.\n")

@@ -226,8 +226,8 @@ mod_preproc_ui <- function(id) {
               textInput(
                 ns("nome_var_customizado"),
                 "Nome na legenda (opcional):",
-                placeholder = "Deixe vazio para usar o nome da variável",
-                updateOn = "blur"),
+                placeholder = "Deixe vazio para usar o nome da variável"
+              ),
               
               selectInput(
                 ns("pal"), 
