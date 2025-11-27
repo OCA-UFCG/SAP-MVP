@@ -1,5 +1,6 @@
 # requirements.R
 # Automatically detect and install all packages used in your app
+# Just to mention that global.r load all packages used in the app 
 
 # List of R files to scan (add others if needed)
 r_files <- c("app.R", "global.R", ".Rhistory", "./R/electre_tri_b_func.R", "./R/mod_analise.R", "./R/mod_preproc.R")
