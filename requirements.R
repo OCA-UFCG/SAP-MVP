@@ -1,110 +1,70 @@
-# requirements.R
-# Detect, install and load all required packages automatically
+# requirements.R - Lista Otimizada e Limpa
 
-r_files <- c(
-  "app.R",
-  "global.R",
-  "./R/electre_tri_b_func.R",
-  "./R/mod_analise.R",
-  "./R/mod_preproc.R"
-)
+# Definir repositorio de BINARIOS (Isso acelera o build em 10x)
+# Usando snapshot para Ubuntu 22.04 (Jammy) que é a base do rocker/shiny
+options(repos = c(CRAN = "https://packagemanager.posit.co/cran/__linux__/jammy/latest"))
 
-extract_packages <- function(file) {
-  if (!file.exists(file)) return(character(0))
-
-  lines <- readLines(file, warn = FALSE)
-
-  matches <- regmatches(lines, gregexpr("(?<=library\\(|require\\()([A-Za-z0-9\\.]+)", lines, perl = TRUE))
-  unlist(matches)
-}
-
-packages <- unique(unlist(lapply(r_files, extract_packages)))
-
-# Remove base packages
-base_pkgs <- rownames(installed.packages(priority = "base"))
-packages <- setdiff(packages, base_pkgs)
-
-cat("📦 Pacotes detectados:\n", paste(packages, collapse = ", "), "\n\n")
-
-# Instalar os que faltam
-missing <- setdiff(packages, installed.packages()[, "Package"])
-
-if (length(missing) > 0) {
-  cat("⬇ Instalando pacotes faltantes:\n", paste(missing, collapse = ", "), "\n\n")
-  install.packages(missing)
-} else {
-  cat("✅ Nenhum pacote faltando.\n")
-}
-
-# Carregar pacotes
-invisible(lapply(packages, function(p) {
-  suppressPackageStartupMessages(library(p, character.only = TRUE))
-}))
-
-cat("🚀 Ambiente pronto. Todos os pacotes carregados.\n")
-
-# Lista Definitiva de Pacotes
 packages <- c(
-  # --- Core & UI ---
+  # --- Core Shiny & UI ---
   "shiny",
   "bslib",
   "shinyWidgets",
   "shinyjs",
-  "waiter",
+  "waiter",       # Telas de carregamento
   "htmltools",
+  "shinyBS",
+  "shinycssloaders",
+  "colourpicker",
   
-  # --- Dados ---
+  # --- Dados & Manipulacao ---
   "dplyr",
   "tidyr",
   "stringr",
   "purrr",
   "readr",
   "lubridate",
-  "qs",           # Essencial para seus arquivos .qs
-  "openxlsx",     # Para gerar_excel_completo.R
+  "qs",           # CRITICO: Para ler seus arquivos .qs
+  "openxlsx",     # Provavel uso em gerar_excel_completo.R
+  "writexl",
   "readxl",
   
-  # --- Espacial (O mais chato de instalar) ---
-  "sf",
+  # --- Espacial ---
+  "sf",           # O mais pesado de todos
   "leaflet",
   "leaflet.extras",
   "geojsonsf",
-  "units",        # Dependencia comum do sf
+  "units",
   
-  # --- Visualizacao & Relatorios ---
+  # --- Visualizacao ---
   "plotly",
   "ggplot2",
   "DT",
   "viridis",
   "RColorBrewer",
+  
+  # --- Relatorios ---
   "rmarkdown",
   "knitr",
-  "kableExtra",   # Causa do ultimo erro (precisa de textshaping)
-  "systemfonts",  # Dependencia do kableExtra
-  "textshaping",  # Dependencia do kableExtra
+  "kableExtra",
+  "systemfonts",
+  "textshaping",
   
   # --- Chatbot & API ---
   "httr2",
   "jsonlite",
   
-  # --- Async & Utils ---
+  # --- Async ---
   "future",
-  "promises",
-  "remotes"
+  "promises"
 )
 
-# Funcao de instalacao com verificacao de erro
-install_package_robust <- function(pkg) {
-  if (!requireNamespace(pkg, quietly = TRUE)) {
-    message(paste("⬇ Instalando:", pkg))
-    install.packages(pkg, repos = "https://cloud.r-project.org")
-    
-    if (!requireNamespace(pkg, quietly = TRUE)) {
-      stop(paste("❌ ERRO FATAL: Falha ao instalar", pkg))
-    }
+# Funcao de instalacao simples e rapida
+install_if_missing <- function(p) {
+  if (!requireNamespace(p, quietly = TRUE)) {
+    message(paste("⬇ Instalando (Binario):", p))
+    install.packages(p)
   }
 }
 
-# Instala tudo
-invisible(lapply(packages, install_package_robust))
-cat("🚀 Todos os pacotes instalados com sucesso.\n")
+invisible(lapply(packages, install_if_missing))
+cat("🚀 Todos os pacotes instalados via Binários.\n")
