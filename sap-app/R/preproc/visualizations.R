@@ -6,7 +6,7 @@
 # Foi refatorado para execução SÍNCRONA (sequencial) para garantir estabilidade
 # em ambientes containerizados (Docker/Linux), onde o gerenciamento de 
 # processos filhos (forking) causava instabilidade e crash da aplicação.
-# Como o volume de dados é médio (~1.6k linhas, é possível verificar isso ao forçar o R a rodar diretamente no terminal), o impacto de performance é irrelevante.
+# Como o volume de dados é médio (~1.6k linhas, com Docker é possível verificar isso ao forçar o R a rodar diretamente no terminal), o impacto de performance é irrelevante.
 # =====================================================================
 
 library(plotly) # Biblioteca de gráficos interativos (baseada em D3.js)
@@ -63,7 +63,7 @@ criar_boxplots <- function(df, vars) {
 criar_matriz_correlacao <- function(df, vars) {
   # 'req': Garante que o dataframe existe antes de prosseguir (evita null pointer exceptions)
   req(df)
-  validate(need(length(vars) >= 2, "Selecione pelo menos 2 variáveis para correlação"))
+  validate(need(length(vars) >= 2, "Selecione 2+ variáveis"))
   
   # Pipeline de dados (%>%) - Equivalente a encadeamento de métodos
   # 1. Seleciona colunas; 2. Remove linhas com NAs (drop na)
@@ -83,7 +83,7 @@ criar_matriz_correlacao <- function(df, vars) {
     type = "heatmap",
     colors = colorRamp(c("blue", "white", "red")) # Gradiente de cor
   ) %>%
-    layout(title = "Matriz de Correlação")
+    layout(title = "Correlação (Pearson)")
 }
 
 #' Criar gráfico de PCA (Análise de Componentes Principais)
@@ -91,7 +91,7 @@ criar_matriz_correlacao <- function(df, vars) {
 #' @note Execução Síncrona.
 criar_pca <- function(df, vars) {
   req(df)
-  validate(need(length(vars) >= 2, "Selecione pelo menos 2 variáveis para PCA"))
+  validate(need(length(vars) >= 2, "Selecione 2+ variáveis"))
   
   # Preparação dos dados
   df_sel <- df %>% select(all_of(vars)) %>% na.omit()
@@ -114,7 +114,7 @@ criar_pca <- function(df, vars) {
   plot_ly(data = pca_data, x = ~PC1, y = ~PC2, type = 'scatter', mode = 'markers',
           marker = list(opacity = 0.6)) %>%
     layout(
-      title = "Análise de Componentes Principais (PCA)",
+      title = "PCA (normalizado)",
       xaxis = list(title = paste0("PC1 (", var_exp[1], "%)")),
       yaxis = list(title = paste0("PC2 (", var_exp[2], "%)"))
     )
